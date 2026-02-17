@@ -21,7 +21,6 @@ interface OpenModalInterface {
   closeOnClickOutside?: boolean;
   removeLayout?: boolean;
   fullScreen?: boolean;
-  top?: string | number;
   closeOnEscape?: boolean;
   withCloseButton?: boolean;
   askClose?: boolean;
@@ -176,21 +175,12 @@ export const Component: FC<{
       >
         <div className="relative flex-1">
           <div
-            style={
-              modal.top
-                ? { paddingTop: modal.top, paddingBottom: modal.top }
-                : {}
-            }
             className={clsx(
               'absolute min-w-full',
               !modal.fullScreen
-                ? modal.top
-                  ? ''
-                  : 'min-h-full pt-[100px] pb-[100px]'
+                ? 'min-h-full pt-[100px] pb-[100px]'
                 : 'h-screen',
-              modal.size && modal.height
-                ? 'flex justify-center items-center'
-                : 'top-0 left-0'
+                modal.size && modal.height ? 'flex justify-center items-center' : 'top-0 left-0'
             )}
           >
             <div
@@ -198,7 +188,7 @@ export const Component: FC<{
                 !modal.removeLayout && 'gap-[40px] p-[32px]',
                 'bg-newBgColorInner mx-auto flex flex-col w-fit rounded-[24px] relative',
                 modal.size ? '' : 'min-w-[600px]',
-                modal.fullScreen && 'h-full'
+                modal.fullScreen && 'h-full',
               )}
               {...((!!modal.size || !!modal.height) && {
                 style: {
@@ -238,14 +228,7 @@ export const Component: FC<{
                   </div>
                 ) : null}
               </div>
-              <div
-                className={clsx(
-                  'whitespace-pre-line',
-                  !!modal.height && !!modal.size && 'flex flex-1 flex-col'
-                )}
-              >
-                {RenderComponent}
-              </div>
+              <div className={clsx("whitespace-pre-line", !!modal.height && !!modal.size && 'flex flex-1 flex-col')}>{RenderComponent}</div>
             </div>
           </div>
         </div>

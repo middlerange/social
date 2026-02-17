@@ -25,7 +25,6 @@ interface VariableContextInterface {
   dub: boolean;
   transloadit: string[];
   sentryDsn: string;
-  extensionId: string;
 }
 const VariableContext = createContext({
   stripeClient: '',
@@ -50,7 +49,6 @@ const VariableContext = createContext({
   dub: false,
   transloadit: [],
   sentryDsn: '',
-  extensionId: '',
 } as VariableContextInterface);
 export const VariableContextComponent: FC<
   VariableContextInterface & {

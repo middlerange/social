@@ -25,7 +25,6 @@ import { NewPost } from '@gitroom/frontend/components/launches/new.post';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
 import { useIntegrationList } from '@gitroom/frontend/components/launches/helpers/use.integration.list';
 import useCookie from 'react-use-cookie';
-import { Onboarding } from '@gitroom/frontend/components/onboarding/onboarding';
 
 export const SVGLine = () => {
   return (
@@ -287,7 +286,7 @@ export const MenuComponent: FC<
           </div>
         )}
         <ImageWithFallback
-          fallbackSrc={'/no-picture.jpg'}
+          fallbackSrc={`/icons/platforms/${integration.identifier}.png`}
           src={integration.picture || '/no-picture.jpg'}
           className="rounded-[8px] min-w-[36px] min-h-[36px]"
           alt={integration.identifier}
@@ -457,7 +456,7 @@ export const LaunchesComponent = () => {
       return;
     }
     if (search.get('msg')) {
-      toast.show(search.get('msg')!, 'success');
+      toast.show(search.get('msg')!, 'warning');
       window?.opener?.postMessage(
         {
           msg: search.get('msg')!,
@@ -491,7 +490,6 @@ export const LaunchesComponent = () => {
   // @ts-ignore
   return (
     <DNDProvider>
-      <Onboarding />
       <CalendarWeekProvider integrations={sortedIntegrations}>
         <div
           className={clsx(

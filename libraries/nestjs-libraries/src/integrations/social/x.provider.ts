@@ -45,22 +45,15 @@ export class XProvider extends SocialAbstract implements SocialProvider {
         value: string;
       }
     | undefined {
-    if (body.includes('Unsupported Authentication')) {
-      return {
-        type: 'refresh-token',
-        value: 'X authentication has expired, please reconnect your account',
-      };
-    }
-
     if (body.includes('usage-capped')) {
       return {
-        type: 'bad-body',
+        type: 'refresh-token',
         value: 'Posting failed - capped reached. Please try again later',
       };
     }
     if (body.includes('duplicate-rules')) {
       return {
-        type: 'bad-body',
+        type: 'refresh-token',
         value:
           'You have already posted this post, please wait before posting again',
       };
@@ -298,28 +291,45 @@ export class XProvider extends SocialAbstract implements SocialProvider {
     };
   }
 
-  private async getClient(accessToken: string) {
+  async post(
+    id: string,
+    accessToken: string,
+    postDetails: PostDetails<{
+      active_thread_finisher: boolean;
+      thread_finisher: string;
+      community?: string;
+      who_can_reply_post:
+        | 'everyone'
+        | 'following'
+        | 'mentionedUsers'
+        | 'subscribers'
+        | 'verified';
+    }>[]
+  ): Promise<PostResponse[]> {
     const [accessTokenSplit, accessSecretSplit] = accessToken.split(':');
-    return new TwitterApi({
+    const client = new TwitterApi({
       appKey: process.env.X_API_KEY!,
       appSecret: process.env.X_API_SECRET!,
       accessToken: accessTokenSplit,
       accessSecret: accessSecretSplit,
     });
-  }
+    const {
+      data: { username },
+    } = await this.runInConcurrent(async () =>
+      client.v2.me({
+        'user.fields': 'username',
+      })
+    );
 
-  private async uploadMedia(
-    client: TwitterApi,
-    postDetails: PostDetails<any>[]
-  ) {
-    return (
+    // upload everything before, you don't want it to fail between the posts
+    const uploadAll = (
       await Promise.all(
         postDetails.flatMap((p) =>
           p?.media?.flatMap(async (m) => {
             return {
               id: await this.runInConcurrent(
                 async () =>
-                  client.v2.uploadMedia(
+                  client.v1.uploadMedia(
                     m.path.indexOf('mp4') > -1
                       ? Buffer.from(await readOrFetch(m.path))
                       : await sharp(await readOrFetch(m.path), {
@@ -331,7 +341,7 @@ export class XProvider extends SocialAbstract implements SocialProvider {
                           .gif()
                           .toBuffer(),
                     {
-                      media_type: (lookup(m.path) || '') as any,
+                      mimeType: lookup(m.path) || '',
                     }
                   ),
                 true
@@ -351,120 +361,67 @@ export class XProvider extends SocialAbstract implements SocialProvider {
 
       return acc;
     }, {} as Record<string, string[]>);
-  }
 
-  async post(
-    id: string,
-    accessToken: string,
-    postDetails: PostDetails<{
-      active_thread_finisher: boolean;
-      thread_finisher: string;
-      community?: string;
-      who_can_reply_post:
-        | 'everyone'
-        | 'following'
-        | 'mentionedUsers'
-        | 'subscribers'
-        | 'verified';
-    }>[]
-  ): Promise<PostResponse[]> {
-    const client = await this.getClient(accessToken);
-    const {
-      data: { username },
-    } = await this.runInConcurrent(async () =>
-      client.v2.me({
-        'user.fields': 'username',
-      })
-    );
+    const ids: Array<{ postId: string; id: string; releaseURL: string }> = [];
+    for (const post of postDetails) {
+      const media_ids = (uploadAll[post.id] || []).filter((f) => f);
 
-    const [firstPost] = postDetails;
+      // @ts-ignore
+      const { data }: { data: { id: string } } = await this.runInConcurrent(
+        async () =>
+          // @ts-ignore
+          client.v2.tweet({
+            ...(!postDetails?.[0]?.settings?.who_can_reply_post ||
+            postDetails?.[0]?.settings?.who_can_reply_post === 'everyone'
+              ? {}
+              : {
+                  reply_settings:
+                    postDetails?.[0]?.settings?.who_can_reply_post,
+                }),
+            ...(postDetails?.[0]?.settings?.community
+              ? {
+                  community_id:
+                    postDetails?.[0]?.settings?.community?.split('/').pop() ||
+                    '',
+                }
+              : {}),
+            text: post.message,
+            ...(media_ids.length ? { media: { media_ids } } : {}),
+            ...(ids.length
+              ? { reply: { in_reply_to_tweet_id: ids[ids.length - 1].postId } }
+              : {}),
+          })
+      );
 
-    // upload media for the first post
-    const uploadAll = await this.uploadMedia(client, [firstPost]);
-
-    const media_ids = (uploadAll[firstPost.id] || []).filter((f) => f);
-
-    // @ts-ignore
-    const { data }: { data: { id: string } } = await this.runInConcurrent(
-      async () =>
-        // @ts-ignore
-        client.v2.tweet({
-          ...(!firstPost?.settings?.who_can_reply_post ||
-          firstPost?.settings?.who_can_reply_post === 'everyone'
-            ? {}
-            : {
-                reply_settings: firstPost?.settings?.who_can_reply_post,
-              }),
-          ...(firstPost?.settings?.community
-            ? {
-                share_with_followers: true,
-                community_id:
-                  firstPost?.settings?.community?.split('/').pop() || '',
-              }
-            : {}),
-          text: firstPost.message,
-          ...(media_ids.length ? { media: { media_ids } } : {}),
-        })
-    );
-
-    return [
-      {
+      ids.push({
         postId: data.id,
-        id: firstPost.id,
+        id: post.id,
         releaseURL: `https://twitter.com/${username}/status/${data.id}`,
-        status: 'posted',
-      },
-    ];
-  }
+      });
+    }
 
-  async comment(
-    id: string,
-    postId: string,
-    lastCommentId: string | undefined,
-    accessToken: string,
-    postDetails: PostDetails<{
-      active_thread_finisher: boolean;
-      thread_finisher: string;
-    }>[],
-    integration: Integration
-  ): Promise<PostResponse[]> {
-    const client = await this.getClient(accessToken);
-    const {
-      data: { username },
-    } = await this.runInConcurrent(async () =>
-      client.v2.me({
-        'user.fields': 'username',
-      })
-    );
+    if (postDetails?.[0]?.settings?.active_thread_finisher) {
+      try {
+        await this.runInConcurrent(async () =>
+          client.v2.tweet({
+            text:
+              stripHtmlValidation(
+                'normal',
+                postDetails?.[0]?.settings?.thread_finisher!,
+                true
+              ) +
+              '\n' +
+              ids[0].releaseURL,
+            reply: { in_reply_to_tweet_id: ids[ids.length - 1].postId },
+          })
+        );
+      } catch (err) {}
+    }
 
-    const [commentPost] = postDetails;
-
-    // upload media for the comment
-    const uploadAll = await this.uploadMedia(client, [commentPost]);
-
-    const media_ids = (uploadAll[commentPost.id] || []).filter((f) => f);
-
-    const replyToId = lastCommentId || postId;
-
-    // @ts-ignore
-    const { data }: { data: { id: string } } = await this.runInConcurrent(
-      async () =>
-        // @ts-ignore
-        client.v2.tweet({
-          text: commentPost.message,
-          ...(media_ids.length ? { media: { media_ids } } : {}),
-          reply: { in_reply_to_tweet_id: replyToId },
-        })
-    );
-
-    return [
-      {
-        postId: data.id,
-        id: commentPost.id,
-        releaseURL: `https://twitter.com/${username}/status/${data.id}`,
-        status: 'posted',
-      },
-    ];
+    return ids.map((p) => ({
+      ...p,
+      status: 'posted',
+    }));
   }
 
   private loadAllTweets = async (
@@ -511,7 +468,7 @@ export class XProvider extends SocialAbstract implements SocialProvider {
     }
 
     const until = dayjs().endOf('day');
-    const since = dayjs().subtract(date > 100 ? 100 : date, 'day');
+    const since = dayjs().subtract(date, 'day');
 
     const [accessTokenSplit, accessSecretSplit] = accessToken.split(':');
     const client = new TwitterApi({
@@ -588,96 +545,6 @@ export class XProvider extends SocialAbstract implements SocialProvider {
     } catch (err) {
       console.log(err);
     }
-    return [];
-  }
-
-  async postAnalytics(
-    integrationId: string,
-    accessToken: string,
-    postId: string,
-    date: number
-  ): Promise<AnalyticsData[]> {
-    if (process.env.DISABLE_X_ANALYTICS) {
-      return [];
-    }
-
-    const today = dayjs().format('YYYY-MM-DD');
-
-    const [accessTokenSplit, accessSecretSplit] = accessToken.split(':');
-    const client = new TwitterApi({
-      appKey: process.env.X_API_KEY!,
-      appSecret: process.env.X_API_SECRET!,
-      accessToken: accessTokenSplit,
-      accessSecret: accessSecretSplit,
-    });
-
-    try {
-      // Fetch the specific tweet with public metrics
-      const tweet = await client.v2.singleTweet(postId, {
-        'tweet.fields': ['public_metrics', 'created_at'],
-      });
-
-      if (!tweet?.data?.public_metrics) {
-        return [];
-      }
-
-      const metrics = tweet.data.public_metrics;
-
-      const result: AnalyticsData[] = [];
-
-      if (metrics.impression_count !== undefined) {
-        result.push({
-          label: 'Impressions',
-          percentageChange: 0,
-          data: [{ total: String(metrics.impression_count), date: today }],
-        });
-      }
-
-      if (metrics.like_count !== undefined) {
-        result.push({
-          label: 'Likes',
-          percentageChange: 0,
-          data: [{ total: String(metrics.like_count), date: today }],
-        });
-      }
-
-      if (metrics.retweet_count !== undefined) {
-        result.push({
-          label: 'Retweets',
-          percentageChange: 0,
-          data: [{ total: String(metrics.retweet_count), date: today }],
-        });
-      }
-
-      if (metrics.reply_count !== undefined) {
-        result.push({
-          label: 'Replies',
-          percentageChange: 0,
-          data: [{ total: String(metrics.reply_count), date: today }],
-        });
-      }
-
-      if (metrics.quote_count !== undefined) {
-        result.push({
-          label: 'Quotes',
-          percentageChange: 0,
-          data: [{ total: String(metrics.quote_count), date: today }],
-        });
-      }
-
-      if (metrics.bookmark_count !== undefined) {
-        result.push({
-          label: 'Bookmarks',
-          percentageChange: 0,
-          data: [{ total: String(metrics.bookmark_count), date: today }],
-        });
-      }
-
-      return result;
-    } catch (err) {
-      console.log('Error fetching X post analytics:', err);
-    }
-
     return [];
   }
 

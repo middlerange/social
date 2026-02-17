@@ -1,47 +1,57 @@
 'use client';
 
-import { FC, useCallback, useEffect, useRef } from 'react';
+import { FC, useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useModals } from '@gitroom/frontend/components/layout/new-modal';
+import { Button } from '@gitroom/react/form/button';
+import { ConnectChannels } from '@gitroom/frontend/components/onboarding/connect.channels';
+import { useVariables } from '@gitroom/react/helpers/variable.context';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
-import { OnboardingModal } from '@gitroom/frontend/components/onboarding/onboarding.modal';
 
+const Welcome: FC = () => {
+  const { isGeneral } = useVariables();
+  const [step, setStep] = useState(1);
+  const router = useRouter();
+  const t = useT();
+
+  const goToLaunches = useCallback(() => {
+    router.push('/launches');
+  }, []);
+
+  return (
+    <div className="relative">
+      {step === 2 - (isGeneral ? 1 : 0) && (
+        <div>
+          <ConnectChannels />
+          <div className="flex justify-end gap-[8px]">
+            <Button onClick={goToLaunches}>{t('close', 'Close')}</Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
 export const Onboarding: FC = () => {
   const query = useSearchParams();
   const modal = useModals();
-  const router = useRouter();
   const modalOpen = useRef(false);
   const t = useT();
-
-  const handleClose = useCallback(() => {
-    modal.closeAll();
-    router.push('/launches');
-  }, [modal, router]);
 
   useEffect(() => {
     const onboarding = query.get('onboarding');
     if (!onboarding) {
-      if (modalOpen.current) {
-        modalOpen.current = false;
-        modal.closeAll();
-      }
-      return;
-    }
-    if (modalOpen.current) {
+      modalOpen.current = false;
+      modal.closeAll();
       return;
     }
     modalOpen.current = true;
     modal.openModal({
-      // title: t('onboarding', 'Welcome to Postiz'),
-      withCloseButton: true,
+      title: t('onboarding', 'Onboarding'),
+      withCloseButton: false,
       closeOnEscape: false,
-      removeLayout: true,
-      askClose: true,
-      fullScreen: true,
-      onClose: handleClose,
-      children: <OnboardingModal onClose={handleClose} />,
+      size: '900px',
+      children: <Welcome />,
     });
-  }, [query, handleClose, t]);
-  
+  }, [query]);
   return null;
 };

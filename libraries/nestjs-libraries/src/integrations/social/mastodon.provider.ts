@@ -7,7 +7,6 @@ import {
 import { makeId } from '@gitroom/nestjs-libraries/services/make.is';
 import { SocialAbstract } from '@gitroom/nestjs-libraries/integrations/social.abstract';
 import dayjs from 'dayjs';
-import { Integration } from '@prisma/client';
 
 export class MastodonProvider extends SocialAbstract implements SocialProvider {
   override maxConcurrentJob = 5; // Mastodon instances typically have generous limits
@@ -134,88 +133,47 @@ export class MastodonProvider extends SocialAbstract implements SocialProvider {
     url: string,
     postDetails: PostDetails[]
   ): Promise<PostResponse[]> {
-    const [firstPost] = postDetails;
+    let loadId = '';
+    const ids = [] as string[];
+    for (const getPost of postDetails) {
+      const uploadFiles = await Promise.all(
+        getPost?.media?.map((media) =>
+          this.uploadFile(url, media.path, accessToken)
+        ) || []
+      );
 
-    const uploadFiles = await Promise.all(
-      firstPost?.media?.map((media) =>
-        this.uploadFile(url, media.path, accessToken)
-      ) || []
-    );
-
-    const form = new FormData();
-    form.append('status', firstPost.message);
-    form.append('visibility', 'public');
-    if (uploadFiles.length) {
-      for (const file of uploadFiles) {
-        form.append('media_ids[]', file);
+      const form = new FormData();
+      form.append('status', getPost.message);
+      form.append('visibility', 'public');
+      if (loadId) {
+        form.append('in_reply_to_id', loadId);
       }
+      if (uploadFiles.length) {
+        for (const file of uploadFiles) {
+          form.append('media_ids[]', file);
+        }
+      }
+
+      const post = await (
+        await this.fetch(`${url}/api/v1/statuses`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: form,
+        })
+      ).json();
+
+      ids.push(post.id);
+      loadId = loadId || post.id;
     }
 
-    const post = await (
-      await this.fetch(`${url}/api/v1/statuses`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: form,
-      })
-    ).json();
-
-    return [
-      {
-        id: firstPost.id,
-        postId: post.id,
-        releaseURL: `${url}/statuses/${post.id}`,
-        status: 'completed',
-      },
-    ];
-  }
-
-  async dynamicComment(
-    id: string,
-    postId: string,
-    lastCommentId: string | undefined,
-    accessToken: string,
-    url: string,
-    postDetails: PostDetails[]
-  ): Promise<PostResponse[]> {
-    const [commentPost] = postDetails;
-    const replyToId = lastCommentId || postId;
-
-    const uploadFiles = await Promise.all(
-      commentPost?.media?.map((media) =>
-        this.uploadFile(url, media.path, accessToken)
-      ) || []
-    );
-
-    const form = new FormData();
-    form.append('status', commentPost.message);
-    form.append('visibility', 'public');
-    form.append('in_reply_to_id', replyToId);
-    if (uploadFiles.length) {
-      for (const file of uploadFiles) {
-        form.append('media_ids[]', file);
-      }
-    }
-
-    const post = await (
-      await this.fetch(`${url}/api/v1/statuses`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: form,
-      })
-    ).json();
-
-    return [
-      {
-        id: commentPost.id,
-        postId: post.id,
-        releaseURL: `${url}/statuses/${post.id}`,
-        status: 'completed',
-      },
-    ];
+    return postDetails.map((p, i) => ({
+      id: p.id,
+      postId: ids[i],
+      releaseURL: `${url}/statuses/${ids[i]}`,
+      status: 'completed',
+    }));
   }
 
   async post(
@@ -225,24 +183,6 @@ export class MastodonProvider extends SocialAbstract implements SocialProvider {
   ): Promise<PostResponse[]> {
     return this.dynamicPost(
       id,
-      accessToken,
-      process.env.MASTODON_URL || 'https://mastodon.social',
-      postDetails
-    );
-  }
-
-  async comment(
-    id: string,
-    postId: string,
-    lastCommentId: string | undefined,
-    accessToken: string,
-    postDetails: PostDetails[],
-    integration: Integration
-  ): Promise<PostResponse[]> {
-    return this.dynamicComment(
-      id,
-      postId,
-      lastCommentId,
       accessToken,
       process.env.MASTODON_URL || 'https://mastodon.social',
       postDetails

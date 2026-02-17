@@ -15,7 +15,6 @@ import { LoginUserDto } from '@gitroom/nestjs-libraries/dtos/auth/login.user.dto
 import { AuthService } from '@gitroom/backend/services/auth/auth.service';
 import { ForgotReturnPasswordDto } from '@gitroom/nestjs-libraries/dtos/auth/forgot-return.password.dto';
 import { ForgotPasswordDto } from '@gitroom/nestjs-libraries/dtos/auth/forgot.password.dto';
-import { ResendActivationDto } from '@gitroom/nestjs-libraries/dtos/auth/resend-activation.dto';
 import { ApiTags } from '@nestjs/swagger';
 import { getCookieUrlFromDomain } from '@gitroom/helpers/subdomain/subdomain.management';
 import { EmailService } from '@gitroom/nestjs-libraries/services/email.service';
@@ -103,7 +102,7 @@ export class AuthController {
         }
       }
 
-      Sentry.metrics.count('new_user', 1);
+      Sentry.metrics.count("new_user", 1);
       response.header('onboarding', 'true');
       response.status(200).json({
         register: true,
@@ -207,10 +206,9 @@ export class AuthController {
   @Post('/activate')
   async activate(
     @Body('code') code: string,
-    @Body('datafast_visitor_id') datafast_visitor_id: string,
     @Res({ passthrough: false }) response: Response
   ) {
-    const activate = await this._authService.activate(code, datafast_visitor_id);
+    const activate = await this._authService.activate(code);
     if (!activate) {
       return response.status(200).json({ can: false });
     }
@@ -234,21 +232,6 @@ export class AuthController {
     response.header('onboarding', 'true');
 
     return response.status(200).json({ can: true });
-  }
-
-  @Post('/resend-activation')
-  async resendActivation(@Body() body: ResendActivationDto) {
-    try {
-      await this._authService.resendActivationEmail(body.email);
-      return {
-        success: true,
-      };
-    } catch (e: any) {
-      return {
-        success: false,
-        message: e.message,
-      };
-    }
   }
 
   @Post('/oauth/:provider/exists')

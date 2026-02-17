@@ -33,7 +33,6 @@ export const initializeSentryBasic = (environment: string, dsn: string, extensio
         Sentry.consoleLoggingIntegration({ levels: ['log', 'info', 'warn', 'error', 'debug', 'assert', 'trace'] }),
       ],
       environment: environment || 'development',
-      spotlight: process.env.SENTRY_SPOTLIGHT === '1',
       dsn,
       sendDefaultPii: true,
       ...extension,

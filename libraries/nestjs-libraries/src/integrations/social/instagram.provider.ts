@@ -33,7 +33,7 @@ export class InstagramProvider
     'instagram_manage_comments',
     'instagram_manage_insights',
   ];
-  override maxConcurrentJob = 400;
+  override maxConcurrentJob = 10;
   editor = 'normal' as const;
   dto = InstagramDto;
   maxLength() {
@@ -64,12 +64,6 @@ export class InstagramProvider
         value: 'An unknown error occurred, please try again later',
       };
     }
-    if (body.indexOf('2207081') > -1) {
-      return {
-        type: 'bad-body' as const,
-        value: "This account doesn't support Trial Reels",
-      };
-    }
 
     if (body.indexOf('REVOKED_ACCESS_TOKEN') > -1) {
       return {
@@ -98,7 +92,7 @@ export class InstagramProvider
 
     if (body.indexOf('2207050') > -1) {
       return {
-        type: 'bad-body' as const,
+        type: 'refresh-token' as const,
         value: 'Instagram user is restricted',
       };
     }
@@ -266,13 +260,6 @@ export class InstagramProvider
       return {
         type: 'bad-body' as const,
         value: 'Aspect ratio not supported, must be between 4:5 to 1.91:1',
-      };
-    }
-
-    if (body.indexOf('190,') > -1) {
-      return {
-        type: 'bad-body' as const,
-        value: 'The account is missing some permissions to perform this action, please re-add the account and allow all permissions',
       };
     }
 
@@ -467,10 +454,9 @@ export class InstagramProvider
     integration: Integration,
     type = 'graph.facebook.com'
   ): Promise<PostResponse[]> {
-    const [firstPost] = postDetails;
+    const [firstPost, ...theRest] = postDetails;
     console.log('in progress', id);
     const isStory = firstPost.settings.post_type === 'story';
-    const isTrialReel = !!firstPost.settings.is_trial_reel;
     const medias = await Promise.all(
       firstPost?.media?.map(async (m) => {
         const caption =
@@ -495,15 +481,7 @@ export class InstagramProvider
             : isStory
             ? `image_url=${m.path}&media_type=STORIES`
             : `image_url=${m.path}`;
-
-        const trialParams = isTrialReel
-          ? `&trial_params=${encodeURIComponent(
-              JSON.stringify({
-                graduation_strategy:
-                  firstPost.settings.graduation_strategy || 'MANUAL',
-              })
-            )}`
-          : ``;
+        console.log('in progress1');
 
         const collaborators =
           firstPost?.settings?.collaborators?.length && !isStory
@@ -512,9 +490,10 @@ export class InstagramProvider
               )}`
             : ``;
 
+        console.log(collaborators);
         const { id: photoId } = await (
           await this.fetch(
-            `https://${type}/v20.0/${id}/media?${mediaType}${isCarousel}${collaborators}${trialParams}&access_token=${accessToken}${caption}`,
+            `https://${type}/v20.0/${id}/media?${mediaType}${isCarousel}${collaborators}&access_token=${accessToken}${caption}`,
             {
               method: 'POST',
             }
@@ -542,6 +521,10 @@ export class InstagramProvider
       }) || []
     );
 
+    const arr = [];
+
+    let containerIdGlobal = '';
+    let linkGlobal = '';
     if (medias.length === 1) {
       const { id: mediaId } = await (
         await this.fetch(
@@ -552,20 +535,22 @@ export class InstagramProvider
         )
       ).json();
 
+      containerIdGlobal = mediaId;
+
       const { permalink } = await (
         await this.fetch(
           `https://${type}/v20.0/${mediaId}?fields=permalink&access_token=${accessToken}`
         )
       ).json();
 
-      return [
-        {
-          id: firstPost.id,
-          postId: mediaId,
-          releaseURL: permalink,
-          status: 'success',
-        },
-      ];
+      arr.push({
+        id: firstPost.id,
+        postId: mediaId,
+        releaseURL: permalink,
+        status: 'success',
+      });
+
+      linkGlobal = permalink;
     } else {
       const { id: containerId, ...all3 } = await (
         await this.fetch(
@@ -604,60 +589,45 @@ export class InstagramProvider
         )
       ).json();
 
+      containerIdGlobal = mediaId;
+
       const { permalink } = await (
         await this.fetch(
           `https://${type}/v20.0/${mediaId}?fields=permalink&access_token=${accessToken}`
         )
       ).json();
 
-      return [
-        {
-          id: firstPost.id,
-          postId: mediaId,
-          releaseURL: permalink,
-          status: 'success',
-        },
-      ];
-    }
-  }
-
-  async comment(
-    id: string,
-    postId: string,
-    lastCommentId: string | undefined,
-    accessToken: string,
-    postDetails: PostDetails<InstagramDto>[],
-    integration: Integration,
-    type = 'graph.facebook.com'
-  ): Promise<PostResponse[]> {
-    const [commentPost] = postDetails;
-
-    const { id: commentId } = await (
-      await this.fetch(
-        `https://${type}/v20.0/${postId}/comments?message=${encodeURIComponent(
-          commentPost.message
-        )}&access_token=${accessToken}`,
-        {
-          method: 'POST',
-        }
-      )
-    ).json();
-
-    // Get the permalink from the parent post
-    const { permalink } = await (
-      await this.fetch(
-        `https://${type}/v20.0/${postId}?fields=permalink&access_token=${accessToken}`
-      )
-    ).json();
-
-    return [
-      {
-        id: commentPost.id,
-        postId: commentId,
+      arr.push({
+        id: firstPost.id,
+        postId: mediaId,
         releaseURL: permalink,
         status: 'success',
-      },
-    ];
+      });
+
+      linkGlobal = permalink;
+    }
+
+    for (const post of theRest) {
+      const { id: commentId } = await (
+        await this.fetch(
+          `https://${type}/v20.0/${containerIdGlobal}/comments?message=${encodeURIComponent(
+            post.message
+          )}&access_token=${accessToken}`,
+          {
+            method: 'POST',
+          }
+        )
+      ).json();
+
+      arr.push({
+        id: post.id,
+        postId: commentId,
+        releaseURL: linkGlobal,
+        status: 'success',
+      });
+    }
+
+    return arr;
   }
 
   private setTitle(name: string) {
@@ -761,74 +731,5 @@ export class InstagramProvider
         data.q
       )}&access_token=${accessToken}`
     );
-  }
-
-  async postAnalytics(
-    integrationId: string,
-    accessToken: string,
-    postId: string,
-    date: number,
-    type = 'graph.facebook.com'
-  ): Promise<AnalyticsData[]> {
-    const today = dayjs().format('YYYY-MM-DD');
-
-    try {
-      // Fetch media insights from Instagram Graph API
-      const { data } = await (
-        await this.fetch(
-          `https://${type}/v21.0/${postId}/insights?metric=views,reach,saved,likes,comments,shares&access_token=${accessToken}`
-        )
-      ).json();
-
-      if (!data || data.length === 0) {
-        return [];
-      }
-
-      const result: AnalyticsData[] = [];
-
-      for (const metric of data) {
-        const value = metric.values?.[0]?.value;
-        if (value === undefined) continue;
-
-        let label = '';
-
-        switch (metric.name) {
-          case 'views':
-            label = 'Views';
-            break;
-          case 'reach':
-            label = 'Reach';
-            break;
-          case 'engagement':
-            label = 'Engagement';
-            break;
-          case 'saved':
-            label = 'Saves';
-            break;
-          case 'likes':
-            label = 'Likes';
-            break;
-          case 'comments':
-            label = 'Comments';
-            break;
-          case 'shares':
-            label = 'Shares';
-            break;
-        }
-
-        if (label) {
-          result.push({
-            label,
-            percentageChange: 0,
-            data: [{ total: String(value), date: today }],
-          });
-        }
-      }
-
-      return result;
-    } catch (err) {
-      console.error('Error fetching Instagram post analytics:', err);
-      return [];
-    }
   }
 }

@@ -25,7 +25,6 @@ import { Integration } from '@prisma/client';
 import { SettingsModal } from '@gitroom/frontend/components/launches/settings.modal';
 import { CustomVariables } from '@gitroom/frontend/components/launches/add.provider.component';
 import { useRouter } from 'next/navigation';
-import { useVariables } from '@gitroom/react/helpers/variable.context';
 import { useT } from '@gitroom/react/translation/get.transation.service.client';
 import { AddEditModal } from '@gitroom/frontend/components/new-launch/add.edit.modal';
 import dayjs from 'dayjs';
@@ -60,7 +59,6 @@ export const Menu: FC<{
 
   const fetch = useFetch();
   const router = useRouter();
-  const { extensionId } = useVariables();
   const { integrations, reloadCalendarView } = useCalendar();
   const toast = useToaster();
   const modal = useModals();
@@ -148,26 +146,10 @@ export const Menu: FC<{
       );
       return;
     }
-    // Clean up extension refresh token if applicable
-    if (
-      extensionId &&
-      typeof chrome !== 'undefined' &&
-      chrome?.runtime?.sendMessage
-    ) {
-      try {
-        chrome.runtime.sendMessage(
-          extensionId,
-          { type: 'REMOVE_REFRESH_TOKEN', integrationId: id },
-          () => {}
-        );
-      } catch {
-        // Silently ignore
-      }
-    }
     toast.show(t('channel_deleted', 'Channel Deleted'), 'success');
     setShow(false);
     onChange(true);
-  }, [t, extensionId, id]);
+  }, [t]);
 
   const enableChannel = useCallback(async () => {
     await fetch('/integrations/enable', {
@@ -186,7 +168,7 @@ export const Menu: FC<{
       (integration) => integration.id === id
     );
     modal.openModal({
-      withCloseButton: true,
+      withCloseButton: false,
       closeOnEscape: false,
       closeOnClickOutside: false,
       askClose: true,
@@ -234,7 +216,7 @@ export const Menu: FC<{
             mutate={reloadCalendarView}
             integrations={integrations}
             selectedChannels={[integration.id]}
-            // focusedChannel={integration.id}
+            focusedChannel={integration.id}
             date={dayjs.utc(date).local()}
           />
         ),
@@ -504,7 +486,7 @@ export const Menu: FC<{
                 </svg>
               </div>
               <div className="text-[14px]">
-                {t('change_bot', 'Change Bot')}{' '}
+                {t('change_bot', 'Change Bot')}
                 {[
                   canChangeProfilePicture && t('picture', 'Picture'),
                   canChangeNickName && t('label_nickname', 'Nickname'),

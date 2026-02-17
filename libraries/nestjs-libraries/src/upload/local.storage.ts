@@ -3,14 +3,16 @@ import { mkdirSync, unlink, writeFileSync } from 'fs';
 // @ts-ignore
 import mime from 'mime';
 import { extname } from 'path';
+import axios from 'axios';
+
 export class LocalStorage implements IUploadProvider {
   constructor(private uploadDirectory: string) {}
 
   async uploadSimple(path: string) {
-    const loadImage = await fetch(path);
+    const loadImage = await axios.get(path, { responseType: 'arraybuffer' });
     const contentType =
-      loadImage?.headers?.get('content-type') ||
-      loadImage?.headers?.get('Content-Type');
+      loadImage?.headers?.['content-type'] ||
+      loadImage?.headers?.['Content-Type'];
     const findExtension = mime.getExtension(contentType)!;
 
     const now = new Date();
@@ -30,7 +32,7 @@ export class LocalStorage implements IUploadProvider {
     const filePath = `${dir}/${randomName}.${findExtension}`;
     const publicPath = `${innerPath}/${randomName}.${findExtension}`;
     // Logic to save the file to the filesystem goes here
-    writeFileSync(filePath, Buffer.from(await loadImage.arrayBuffer()));
+    writeFileSync(filePath, loadImage.data);
 
     return process.env.FRONTEND_URL + '/uploads' + publicPath;
   }

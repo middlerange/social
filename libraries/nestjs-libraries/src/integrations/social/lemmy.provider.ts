@@ -10,6 +10,7 @@ import dayjs from 'dayjs';
 import { Integration } from '@prisma/client';
 import { AuthService } from '@gitroom/helpers/auth/auth.service';
 import { LemmySettingsDto } from '@gitroom/nestjs-libraries/dtos/posts/providers-settings/lemmy.dto';
+import { groupBy } from 'lodash';
 import { Tool } from '@gitroom/nestjs-libraries/integrations/tool.decorator';
 
 export class LemmyProvider extends SocialAbstract implements SocialProvider {
@@ -63,7 +64,7 @@ export class LemmyProvider extends SocialAbstract implements SocialProvider {
   async generateAuthUrl() {
     const state = makeId(6);
     return {
-      url: state,
+      url: '',
       codeVerifier: makeId(10),
       state,
     };
@@ -120,7 +121,14 @@ export class LemmyProvider extends SocialAbstract implements SocialProvider {
     }
   }
 
-  private async getJwtAndService(integration: Integration): Promise<{ jwt: string; service: string }> {
+  async post(
+    id: string,
+    accessToken: string,
+    postDetails: PostDetails<LemmySettingsDto>[],
+    integration: Integration
+  ): Promise<PostResponse[]> {
+    const [firstPost, ...restPosts] = postDetails;
+
     const body = JSON.parse(
       AuthService.fixedDecryption(integration.customInstanceDetails!)
     );
@@ -138,18 +146,6 @@ export class LemmyProvider extends SocialAbstract implements SocialProvider {
       })
     ).json();
 
-    return { jwt, service: body.service };
-  }
-
-  async post(
-    id: string,
-    accessToken: string,
-    postDetails: PostDetails<LemmySettingsDto>[],
-    integration: Integration
-  ): Promise<PostResponse[]> {
-    const [firstPost] = postDetails;
-    const { jwt, service } = await this.getJwtAndService(integration);
-
     const valueArray: PostResponse[] = [];
 
     for (const lemmy of firstPost.settings.subreddit) {
@@ -163,8 +159,8 @@ export class LemmyProvider extends SocialAbstract implements SocialProvider {
           : {}),
         nsfw: false,
       });
-      const { post_view } = await (
-        await fetch(service + '/api/v3/post', {
+      const { post_view, ...all } = await (
+        await fetch(body.service + '/api/v3/post', {
           body: JSON.stringify({
             community_id: +lemmy.value.id,
             name: lemmy.value.title,
@@ -192,68 +188,41 @@ export class LemmyProvider extends SocialAbstract implements SocialProvider {
 
       valueArray.push({
         postId: post_view.post.id,
-        releaseURL: service + '/post/' + post_view.post.id,
+        releaseURL: body.service + '/post/' + post_view.post.id,
         id: firstPost.id,
         status: 'published',
       });
+
+      for (const comment of restPosts) {
+        const { comment_view } = await (
+          await fetch(body.service + '/api/v3/comment', {
+            body: JSON.stringify({
+              post_id: post_view.post.id,
+              content: comment.message,
+            }),
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${jwt}`,
+              'Content-Type': 'application/json',
+            },
+          })
+        ).json();
+
+        valueArray.push({
+          postId: comment_view.post.id,
+          releaseURL: body.service + '/comment/' + comment_view.comment.id,
+          id: comment.id,
+          status: 'published',
+        });
+      }
     }
 
-    return [
-      {
-        id: firstPost.id,
-        postId: valueArray.map((p) => String(p.postId)).join(','),
-        releaseURL: valueArray.map((p) => p.releaseURL).join(','),
-        status: 'published',
-      },
-    ];
-  }
-
-  async comment(
-    id: string,
-    postId: string,
-    lastCommentId: string | undefined,
-    accessToken: string,
-    postDetails: PostDetails<LemmySettingsDto>[],
-    integration: Integration
-  ): Promise<PostResponse[]> {
-    const [commentPost] = postDetails;
-    const { jwt, service } = await this.getJwtAndService(integration);
-
-    // postId can be comma-separated if posted to multiple communities
-    const postIds = postId.split(',');
-    const valueArray: PostResponse[] = [];
-
-    for (const singlePostId of postIds) {
-      const { comment_view } = await (
-        await fetch(service + '/api/v3/comment', {
-          body: JSON.stringify({
-            post_id: +singlePostId,
-            content: commentPost.message,
-          }),
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${jwt}`,
-            'Content-Type': 'application/json',
-          },
-        })
-      ).json();
-
-      valueArray.push({
-        postId: String(comment_view.comment.id),
-        releaseURL: service + '/comment/' + comment_view.comment.id,
-        id: commentPost.id,
-        status: 'published',
-      });
-    }
-
-    return [
-      {
-        id: commentPost.id,
-        postId: valueArray.map((p) => p.postId).join(','),
-        releaseURL: valueArray.map((p) => p.releaseURL).join(','),
-        status: 'published',
-      },
-    ];
+    return Object.values(groupBy(valueArray, (p) => p.id)).map((p) => ({
+      id: p[0].id,
+      postId: p.map((p) => String(p.postId)).join(','),
+      releaseURL: p.map((p) => p.releaseURL).join(','),
+      status: 'published',
+    }));
   }
 
   @Tool({
@@ -272,11 +241,27 @@ export class LemmyProvider extends SocialAbstract implements SocialProvider {
     id: string,
     integration: Integration
   ) {
-    const { jwt, service } = await this.getJwtAndService(integration);
+    const body = JSON.parse(
+      AuthService.fixedDecryption(integration.customInstanceDetails!)
+    );
+
+    const { jwt } = await (
+      await fetch(body.service + '/api/v3/user/login', {
+        body: JSON.stringify({
+          username_or_email: body.identifier,
+          password: body.password,
+        }),
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      })
+    ).json();
 
     const { communities } = await (
       await fetch(
-        service + `/api/v3/search?type_=Communities&sort=Active&q=${data.word}`,
+        body.service +
+          `/api/v3/search?type_=Communities&sort=Active&q=${data.word}`,
         {
           headers: {
             Authorization: `Bearer ${jwt}`,

@@ -23,9 +23,7 @@ export class PoliciesGuard implements CanActivate {
     const request: Request = context.switchToHttp().getRequest();
     if (
       request.path.indexOf('/auth') > -1 ||
-      request.path.indexOf('/auth') > -1 ||
-      request.path.indexOf('/integrations/social-connect') > -1 ||
-      request.path.indexOf('/integrations/provider') > -1
+      request.path.indexOf('/stripe') > -1
     ) {
       return true;
     }

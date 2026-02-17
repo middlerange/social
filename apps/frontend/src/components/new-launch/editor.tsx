@@ -56,7 +56,6 @@ import { suggestion } from '@gitroom/frontend/components/new-launch/mention.comp
 import { useFetch } from '@gitroom/helpers/utils/custom.fetch';
 import { AComponent } from '@gitroom/frontend/components/new-launch/a.component';
 import { Placeholder } from '@tiptap/extensions';
-import { useToaster } from '@gitroom/react/toaster/toaster';
 import { InformationComponent } from '@gitroom/frontend/components/launches/information.component';
 import {
   LockIcon,
@@ -64,11 +63,7 @@ import {
   ResetIcon,
   TrashIcon,
   EmojiIcon,
-  DelayIcon,
 } from '@gitroom/frontend/components/ui/icons';
-import { DelayComponent } from '@gitroom/frontend/components/new-launch/delay.component';
-
-const MAX_UPLOAD_SIZE = 1024 * 1024 * 1024; // 1 GB
 
 const InterceptBoldShortcut = Extension.create({
   name: 'preventBoldWithUnderline',
@@ -123,8 +118,6 @@ export const EditorWrapper: FC<{
     deleteInternalValue,
     setGlobalValue,
     setInternalValue,
-    setInternalDelay,
-    setGlobalDelay,
     internalFromAll,
     totalChars,
     postComment,
@@ -157,8 +150,6 @@ export const EditorWrapper: FC<{
       deleteInternalValue: state.deleteInternalValue,
       setGlobalValue: state.setGlobalValue,
       setInternalValue: state.setInternalValue,
-      setGlobalDelay: state.setGlobalDelay,
-      setInternalDelay: state.setInternalDelay,
       totalChars: state.totalChars,
       appendInternalValueMedia: state.appendInternalValueMedia,
       appendGlobalValueMedia: state.appendGlobalValueMedia,
@@ -200,7 +191,6 @@ export const EditorWrapper: FC<{
       const newValue = value.map((p, index) => {
         return {
           id: makeId(10),
-          delay: 0,
           ...(items?.[index]?.media
             ? { media: items[index].media }
             : { media: [] }),
@@ -285,10 +275,7 @@ export const EditorWrapper: FC<{
   const goBackToGlobal = useCallback(async () => {
     if (
       await deleteDialog(
-        t(
-          'are_you_sure_go_back_to_global_mode',
-          'This action is irreversible. Are you sure you want to go back to global mode?'
-        ),
+        t('are_you_sure_go_back_to_global_mode', 'This action is irreversible. Are you sure you want to go back to global mode?'),
         t('yes_go_back_to_global_mode', 'Yes, go back to global mode')
       )
     ) {
@@ -308,7 +295,6 @@ export const EditorWrapper: FC<{
       if (internal) {
         return addInternalValue(index, current, [
           {
-            delay: 0,
             content: '',
             id: makeId(10),
             media: [],
@@ -318,7 +304,6 @@ export const EditorWrapper: FC<{
 
       return addGlobalValue(index, [
         {
-          delay: 0,
           content: '',
           id: makeId(10),
           media: [],
@@ -332,10 +317,7 @@ export const EditorWrapper: FC<{
     (index: number) => async () => {
       if (
         !(await deleteDialog(
-          t(
-            'are_you_sure_delete_this_post',
-            'Are you sure you want to delete this post?'
-          ),
+          t('are_you_sure_delete_this_post', 'Are you sure you want to delete this post?'),
           t('yes_delete_it', 'Yes, delete it!')
         ))
       ) {
@@ -376,10 +358,7 @@ export const EditorWrapper: FC<{
               <div className="w-[54px] h-[54px] rounded-full bg-newSettings opacity-80" />
             </div>
             <div className="text-[14px] font-[600] text-white">
-              {t(
-                'cant_edit_networks_when_creating_set',
-                "You can't edit networks when creating a set"
-              )}
+              {t('cant_edit_networks_when_creating_set', "You can't edit networks when creating a set")}
             </div>
           </div>
           <div className="absolute w-full h-full left-0 top-0 bg-newBackdrop opacity-60 z-[100] rounded-[12px]" />
@@ -401,10 +380,7 @@ export const EditorWrapper: FC<{
               <div className="w-[54px] h-[54px] rounded-full bg-newSettings opacity-80" />
             </div>
             <div className="text-[14px] font-[600] text-white">
-              {t(
-                'click_to_exit_global_editing',
-                'Click this button to exit global editing and customize the post for this channel'
-              )}
+              {t('click_to_exit_global_editing', 'Click this button to exit global editing and customize the post for this channel')}
             </div>
             <div>
               <div className="text-white rounded-[8px] h-[44px] px-[20px] bg-[#D82D7E] cursor-pointer flex justify-center items-center">
@@ -454,7 +430,7 @@ export const EditorWrapper: FC<{
                 chars={chars}
                 childButton={
                   <>
-                    {(canEdit && items.length - 1 === index) || !comments ? (
+                    {((canEdit && items.length - 1 === index) || !comments) ? (
                       <div className="flex items-center">
                         <div className="flex-1">
                           {comments && (
@@ -473,10 +449,7 @@ export const EditorWrapper: FC<{
                             <div className="flex gap-[6px] items-center">
                               <div className="w-[8px] h-[8px] rounded-full bg-[#FC69FF]" />
                               <div className="text-[14px] font-[600]">
-                                {t(
-                                  'editing_a_specific_network',
-                                  'Editing a Specific Network'
-                                )}
+                                {t('editing_a_specific_network', 'Editing a Specific Network')}
                               </div>
                             </div>
                             <div className="flex gap-[6px] items-center">
@@ -506,15 +479,9 @@ export const EditorWrapper: FC<{
                   <TrashIcon
                     onClick={deletePost(index)}
                     data-tooltip-id="tooltip"
-                    data-tooltip-content={t(
-                      'delete_post_tooltip',
-                      'Delete Post'
-                    )}
+                    data-tooltip-content={t('delete_post_tooltip', 'Delete Post')}
                     className="cursor-pointer text-[#FF3F3F]"
                   />
-                )}
-                {index > 0 && (
-                  <DelayComponent currentIndex={index} currentDelay={g.delay} />
                 )}
               </div>
             )}
@@ -526,7 +493,7 @@ export const EditorWrapper: FC<{
 };
 
 export const Editor: FC<{
-  editorType?: 'none' | 'normal' | 'markdown' | 'html';
+  editorType?: 'normal' | 'markdown' | 'html';
   totalPosts: number;
   value: string;
   num?: number;
@@ -561,9 +528,7 @@ export const Editor: FC<{
   const [id] = useState(makeId(10));
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
   const t = useT();
-  const toaster = useToaster();
   const editorRef = useRef<undefined | { editor: any }>();
-  const [loading, setLoading] = useState(false);
 
   const uppy = useUppyUploader({
     onUploadSuccess: (result: any) => {
@@ -571,32 +536,15 @@ export const Editor: FC<{
       uppy.clear();
     },
     allowedFileTypes: 'image/*,video/mp4',
-    onStart: () => {},
-    onEnd: () => setLoading(false),
   });
 
   const onDrop = useCallback(
     (acceptedFiles: File[]) => {
-      const totalSize = acceptedFiles.reduce((acc, file) => acc + file.size, 0);
-
-      if (totalSize > MAX_UPLOAD_SIZE) {
-        toaster.show(
-          t(
-            'upload_size_limit_exceeded',
-            'Upload size limit exceeded. Maximum 1 GB per upload session.'
-          ),
-          'warning'
-        );
-        return;
-      }
-
-      setLoading(true);
-
       for (const file of acceptedFiles) {
         uppy.addFile(file);
       }
     },
-    [uppy, toaster, t]
+    [uppy]
   );
 
   const paste = useCallback(
@@ -610,52 +558,21 @@ export const Editor: FC<{
         return;
       }
 
-      const files: File[] = [];
       // @ts-ignore
       for (const item of clipboardItems) {
         if (item.kind === 'file') {
           const file = item.getAsFile();
           if (file) {
-            files.push(file);
+            uppy.addFile(file);
           }
         }
       }
-
-      const totalSize = files.reduce((acc, file) => acc + file.size, 0);
-
-      if (totalSize > MAX_UPLOAD_SIZE) {
-        toaster.show(
-          t(
-            'upload_size_limit_exceeded',
-            'Upload size limit exceeded. Maximum 1 GB per upload session.'
-          ),
-          'warning'
-        );
-        return;
-      }
-
-      if (files.length > 0) {
-        setLoading(true);
-      }
-
-      for (const file of files) {
-        uppy.addFile(file);
-      }
     },
-    [uppy, num, comments, toaster, t]
+    [uppy, num, comments]
   );
 
   const { getRootProps, isDragActive } = useDropzone({
-    onDrop: (files) => {
-      if (loading) {
-        toaster.show(
-          'Upload current in progress, please wait and then try again.',
-          'warning'
-        );
-        return;
-      }
-      onDrop(files);
-    },
+    onDrop,
     noDrag: num > 0 && comments === 'no-media',
   });
 
@@ -705,14 +622,14 @@ export const Editor: FC<{
       >
         <div className="relative cursor-text flex flex-1 flex-col">
           <div {...getRootProps()} className="flex flex-1 flex-col">
-            <div
-              className={clsx(
-                'absolute left-0 top-0 w-full h-full bg-black/70 z-[300] transition-all items-center justify-center flex text-white text-sm',
-                !isDragActive ? 'pointer-events-none opacity-0' : 'opacity-100'
-              )}
-            >
-              {t('drop_files_here_to_upload', 'Drop your files here to upload')}
-            </div>
+<div
+                className={clsx(
+                  'absolute left-0 top-0 w-full h-full bg-black/70 z-[300] transition-all items-center justify-center flex text-white text-sm',
+                  !isDragActive ? 'pointer-events-none opacity-0' : 'opacity-100'
+                )}
+              >
+                {t('drop_files_here_to_upload', 'Drop your files here to upload')}
+              </div>
             <div className="px-[10px] pt-[10px] bg-newBgColorInner rounded-t-[6px] relative z-[99]">
               <OnlyEditor
                 value={props.value}
@@ -777,18 +694,14 @@ export const Editor: FC<{
                   toolBar={
                     <div className="flex gap-[5px]">
                       <SignatureBox editor={editorRef?.current?.editor} />
-                      {editorType !== 'none' && (
-                        <>
-                          <UText
-                            editor={editorRef?.current?.editor}
-                            currentValue={props.value!}
-                          />
-                          <BoldText
-                            editor={editorRef?.current?.editor}
-                            currentValue={props.value!}
-                          />
-                        </>
-                      )}
+                      <UText
+                        editor={editorRef?.current?.editor}
+                        currentValue={props.value!}
+                      />
+                      <BoldText
+                        editor={editorRef?.current?.editor}
+                        currentValue={props.value!}
+                      />
                       {(editorType === 'markdown' || editorType === 'html') &&
                         identifier !== 'telegram' && (
                           <>
@@ -858,7 +771,7 @@ export const Editor: FC<{
 export const OnlyEditor = forwardRef<
   any,
   {
-    editorType: 'none' | 'normal' | 'markdown' | 'html';
+    editorType: 'normal' | 'markdown' | 'html';
     value: string;
     onChange: (value: string) => void;
     paste?: (event: ClipboardEvent | File[]) => void;

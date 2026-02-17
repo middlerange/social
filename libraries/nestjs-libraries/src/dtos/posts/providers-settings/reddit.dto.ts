@@ -10,7 +10,6 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { JSONSchema } from 'class-validator-jsonschema';
 
 export class RedditFlairDto {
   @IsString()
@@ -26,9 +25,6 @@ export class RedditSettingsDtoInner {
   @IsString()
   @MinLength(2)
   @IsDefined()
-  @JSONSchema({
-    description: 'Subreddit must start with /r',
-  })
   subreddit: string;
 
   @IsString()

@@ -151,31 +151,12 @@ export class IntegrationRepository {
       params.picture = await this.storage.uploadSimple(params.picture);
     }
 
-    const existing = await this._integration.model.integration.findUnique({
-      where: {
-        organizationId_internalId: {
-          organizationId: params.organizationId!,
-          internalId: params.internalId,
-        },
-      },
-    });
-
-    if (existing) {
-      await this._integration.model.integration.delete({
-        where: {
-          id,
-        },
-      });
-    }
-
     return this._integration.model.integration.update({
       where: {
-        ...(existing ? { id: existing.id } : { id }),
+        id,
       },
       data: {
         ...params,
-        disabled: false,
-        deletedAt: null,
       },
     });
   }
@@ -298,6 +279,7 @@ export class IntegrationRepository {
           id: {
             not: upsert.id,
           },
+          organizationId: org,
           rootInternalId: rootId,
         },
         data: {
@@ -327,16 +309,6 @@ export class IntegrationRepository {
     });
   }
 
-  async setBetweenRefreshSteps(id: string) {
-    return this._integration.model.integration.update({
-      where: {
-        id,
-      },
-      data: {
-        inBetweenSteps: true,
-      },
-    });
-  }
   refreshNeeded(org: string, id: string) {
     return this._integration.model.integration.update({
       where: {

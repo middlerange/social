@@ -137,10 +137,6 @@ export class SlackProvider extends SocialAbstract implements SocialProvider {
     postDetails: PostDetails[],
     integration: Integration
   ): Promise<PostResponse[]> {
-    const [firstPost] = postDetails;
-    const channel = firstPost.settings.channel;
-
-    // Join the channel first
     await fetch(`https://slack.com/api/conversations.join`, {
       method: 'POST',
       headers: {
@@ -148,131 +144,48 @@ export class SlackProvider extends SocialAbstract implements SocialProvider {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        channel,
+        channel: postDetails[0].settings.channel,
       }),
     });
 
-    // Post the main message
-    const { ts, channel: responseChannel } = await (
-      await fetch(`https://slack.com/api/chat.postMessage`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          channel,
-          username: integration.name,
-          icon_url: integration.picture,
-          blocks: [
-            {
-              type: 'section',
-              text: {
-                type: 'mrkdwn',
-                text: firstPost.message,
-              },
-            },
-            ...(firstPost.media?.length
-              ? firstPost.media.map((m) => ({
-                  type: 'image',
-                  image_url: m.path,
-                  alt_text: '',
-                }))
-              : []),
-          ],
-        }),
-      })
-    ).json();
-
-    // Get permalink for the message
-    const { permalink } = await (
-      await fetch(
-        `https://slack.com/api/chat.getPermalink?channel=${responseChannel}&message_ts=${ts}`,
-        {
-          method: 'GET',
+    let lastId = '';
+    for (const post of postDetails) {
+      const { ts } = await (
+        await fetch(`https://slack.com/api/chat.postMessage`, {
+          method: 'POST',
           headers: {
             Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
           },
-        }
-      )
-    ).json();
-
-    return [
-      {
-        id: firstPost.id,
-        postId: ts,
-        releaseURL: permalink || '',
-        status: 'posted',
-      },
-    ];
-  }
-
-  async comment(
-    id: string,
-    postId: string,
-    lastCommentId: string | undefined,
-    accessToken: string,
-    postDetails: PostDetails[],
-    integration: Integration
-  ): Promise<PostResponse[]> {
-    const [commentPost] = postDetails;
-    const channel = commentPost.settings.channel;
-    const threadTs = lastCommentId || postId;
-
-    // Post the threaded reply
-    const { ts, channel: responseChannel } = await (
-      await fetch(`https://slack.com/api/chat.postMessage`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          channel,
-          username: integration.name,
-          icon_url: integration.picture,
-          thread_ts: threadTs,
-          blocks: [
-            {
-              type: 'section',
-              text: {
-                type: 'mrkdwn',
-                text: commentPost.message,
+          body: JSON.stringify({
+            channel: postDetails[0].settings.channel,
+            username: integration.name,
+            icon_url: integration.picture,
+            ...(lastId ? { thread_ts: lastId } : {}),
+            blocks: [
+              {
+                type: 'section',
+                text: {
+                  type: 'mrkdwn',
+                  text: post.message,
+                },
               },
-            },
-            ...(commentPost.media?.length
-              ? commentPost.media.map((m) => ({
-                  type: 'image',
-                  image_url: m.path,
-                  alt_text: '',
-                }))
-              : []),
-          ],
-        }),
-      })
-    ).json();
+              ...(post.media?.length
+                ? post.media.map((m) => ({
+                    type: 'image',
+                    image_url: m.path,
+                    alt_text: '',
+                  }))
+                : []),
+            ],
+          }),
+        })
+      ).json();
 
-    // Get permalink for the comment
-    const { permalink } = await (
-      await fetch(
-        `https://slack.com/api/chat.getPermalink?channel=${responseChannel}&message_ts=${ts}`,
-        {
-          method: 'GET',
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-          },
-        }
-      )
-    ).json();
+      lastId = ts;
+    }
 
-    return [
-      {
-        id: commentPost.id,
-        postId: ts,
-        releaseURL: permalink || '',
-        status: 'posted',
-      },
-    ];
+    return [];
   }
 
   async changeProfilePicture(id: string, accessToken: string, url: string) {

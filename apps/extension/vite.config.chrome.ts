@@ -15,7 +15,7 @@ export default mergeConfig(
         manifest: {
           ...baseManifest,
           background: {
-            service_worker: 'src/background.ts',
+            service_worker: 'src/pages/background/index.ts',
             type: 'module',
           },
         } as ManifestV3Export,
@@ -28,7 +28,7 @@ export default mergeConfig(
         ? [
             hotReloadExtension({
               log: true,
-              backgroundPath: 'src/background.ts',
+              backgroundPath: 'src/pages/background/index.ts',
             }),
           ]
         : []),

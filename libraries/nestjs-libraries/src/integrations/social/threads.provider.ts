@@ -26,24 +26,10 @@ export class ThreadsProvider extends SocialAbstract implements SocialProvider {
     // 'threads_profile_discovery',
   ];
   override maxConcurrentJob = 2; // Threads has moderate rate limits
-  refreshCron = true;
 
   editor = 'normal' as const;
   maxLength() {
     return 500;
-  }
-
-  override handleErrors(body: string):
-    | {
-        type: 'refresh-token' | 'bad-body';
-        value: string;
-      }
-    | undefined {
-    if (body.includes('Error validating access token')) {
-      return { type: 'refresh-token', value: 'Threads access token expired' };
-    }
-
-    return undefined;
   }
 
   async refreshToken(refresh_token: string): Promise<AuthTokenDetails> {
@@ -62,7 +48,7 @@ export class ThreadsProvider extends SocialAbstract implements SocialProvider {
       name,
       accessToken: access_token,
       refreshToken: access_token,
-      expiresIn: dayjs().add(58, 'days').unix() - dayjs().unix(),
+      expiresIn: dayjs().add(59, 'days').unix() - dayjs().unix(),
       picture: picture || '',
       username: '',
     };
@@ -115,7 +101,7 @@ export class ThreadsProvider extends SocialAbstract implements SocialProvider {
         'https://graph.threads.net/access_token' +
           '?grant_type=th_exchange_token' +
           `&client_secret=${process.env.THREADS_APP_SECRET}` +
-          `&access_token=${getAccessToken.access_token}`
+          `&access_token=${getAccessToken.access_token}&fields=access_token,expires_in`
       )
     ).json();
 
@@ -128,7 +114,7 @@ export class ThreadsProvider extends SocialAbstract implements SocialProvider {
       name,
       accessToken: access_token,
       refreshToken: access_token,
-      expiresIn: dayjs().add(58, 'days').unix() - dayjs().unix(),
+      expiresIn: dayjs().add(59, 'days').unix() - dayjs().unix(),
       picture: picture || '',
       username: username,
     };
@@ -356,7 +342,7 @@ export class ThreadsProvider extends SocialAbstract implements SocialProvider {
       return [];
     }
 
-    const [firstPost] = postDetails;
+    const [firstPost, ...replies] = postDetails;
 
     // Create the initial thread
     const initialContentId = await this.createThreadContent(
@@ -372,8 +358,8 @@ export class ThreadsProvider extends SocialAbstract implements SocialProvider {
       initialContentId
     );
 
-    // Return the main post response
-    return [
+    // Track the responses
+    const responses: PostResponse[] = [
       {
         id: firstPost.id,
         postId: threadId,
@@ -381,49 +367,60 @@ export class ThreadsProvider extends SocialAbstract implements SocialProvider {
         releaseURL: permalink,
       },
     ];
-  }
 
-  async comment(
-    userId: string,
-    postId: string,
-    lastCommentId: string | undefined,
-    accessToken: string,
-    postDetails: PostDetails<{
-      active_thread_finisher: boolean;
-      thread_finisher: string;
-    }>[],
-    integration: Integration
-  ): Promise<PostResponse[]> {
-    if (!postDetails.length) {
-      return [];
+    // Handle replies if any
+    let lastReplyId = threadId;
+
+    for (const reply of replies) {
+      // Create reply content
+      const replyContentId = await this.createThreadContent(
+        userId,
+        accessToken,
+        reply,
+        lastReplyId
+      );
+
+      // Publish the reply
+      const { threadId: replyThreadId } = await this.publishThread(
+        userId,
+        accessToken,
+        replyContentId
+      );
+
+      // Update the last reply ID for chaining
+      lastReplyId = replyThreadId;
+
+      // Add to responses
+      responses.push({
+        id: reply.id,
+        postId: threadId, // Main thread ID
+        status: 'success',
+        releaseURL: permalink, // Main thread URL
+      });
     }
 
-    const [commentPost] = postDetails;
-    const replyToId = lastCommentId || postId;
+    if (postDetails?.[0]?.settings?.active_thread_finisher) {
+      try {
+        const replyContentId = await this.createThreadContent(
+          userId,
+          accessToken,
+          {
+            id: makeId(10),
+            media: [],
+            message: postDetails?.[0]?.settings?.thread_finisher,
+            settings: {},
+          },
+          lastReplyId,
+          threadId
+        );
 
-    // Create reply content
-    const replyContentId = await this.createThreadContent(
-      userId,
-      accessToken,
-      commentPost,
-      replyToId
-    );
+        await this.publishThread(userId, accessToken, replyContentId);
+      } catch (err) {
+        console.log(err);
+      }
+    }
 
-    // Publish the reply
-    const { threadId: replyThreadId, permalink } = await this.publishThread(
-      userId,
-      accessToken,
-      replyContentId
-    );
-
-    return [
-      {
-        id: commentPost.id,
-        postId: replyThreadId,
-        status: 'success',
-        releaseURL: permalink,
-      },
-    ];
+    return responses;
   }
 
   async analytics(
@@ -521,68 +518,6 @@ export class ThreadsProvider extends SocialAbstract implements SocialProvider {
     }
 
     return false;
-  }
-
-  async postAnalytics(
-    integrationId: string,
-    accessToken: string,
-    postId: string,
-    date: number
-  ): Promise<AnalyticsData[]> {
-    const today = dayjs().format('YYYY-MM-DD');
-
-    try {
-      // Fetch thread insights from Threads API
-      const { data } = await (
-        await this.fetch(
-          `https://graph.threads.net/v1.0/${postId}/insights?metric=views,likes,replies,reposts,quotes&access_token=${accessToken}`
-        )
-      ).json();
-
-      if (!data || data.length === 0) {
-        return [];
-      }
-
-      const result: AnalyticsData[] = [];
-
-      for (const metric of data) {
-        const value = metric.values?.[0]?.value ?? metric.total_value?.value;
-        if (value === undefined) continue;
-
-        let label = '';
-
-        switch (metric.name) {
-          case 'views':
-            label = 'Views';
-            break;
-          case 'likes':
-            label = 'Likes';
-            break;
-          case 'replies':
-            label = 'Replies';
-            break;
-          case 'reposts':
-            label = 'Reposts';
-            break;
-          case 'quotes':
-            label = 'Quotes';
-            break;
-        }
-
-        if (label) {
-          result.push({
-            label,
-            percentageChange: 0,
-            data: [{ total: String(value), date: today }],
-          });
-        }
-      }
-
-      return result;
-    } catch (err) {
-      console.error('Error fetching Threads post analytics:', err);
-      return [];
-    }
   }
 
   // override async mention(

@@ -24,14 +24,13 @@ export class InstagramStandaloneProvider
   identifier = 'instagram-standalone';
   name = 'Instagram\n(Standalone)';
   isBetweenSteps = false;
-  refreshCron = true;
   scopes = [
     'instagram_business_basic',
     'instagram_business_content_publish',
     'instagram_business_manage_comments',
     'instagram_business_manage_insights',
   ];
-    override maxConcurrentJob = 200; // Instagram standalone has stricter limits
+  override maxConcurrentJob = 10; // Instagram standalone has stricter limits
   dto = InstagramDto;
 
   editor = 'normal' as const;
@@ -70,7 +69,7 @@ export class InstagramStandaloneProvider
       name,
       accessToken: access_token,
       refreshToken: access_token,
-      expiresIn: dayjs().add(58, 'days').unix() - dayjs().unix(),
+      expiresIn: dayjs().add(59, 'days').unix() - dayjs().unix(),
       picture: profile_picture_url || '',
       username,
     };
@@ -145,7 +144,7 @@ export class InstagramStandaloneProvider
       name,
       accessToken: access_token,
       refreshToken: access_token,
-      expiresIn: dayjs().add(58, 'days').unix() - dayjs().unix(),
+      expiresIn: dayjs().add(59, 'days').unix() - dayjs().unix(),
       picture: profile_picture_url,
       username,
     };
@@ -166,44 +165,10 @@ export class InstagramStandaloneProvider
     );
   }
 
-  async comment(
-    id: string,
-    postId: string,
-    lastCommentId: string | undefined,
-    accessToken: string,
-    postDetails: PostDetails<InstagramDto>[],
-    integration: Integration
-  ): Promise<PostResponse[]> {
-    return instagramProvider.comment(
-      id,
-      postId,
-      lastCommentId,
-      accessToken,
-      postDetails,
-      integration,
-      'graph.instagram.com'
-    );
-  }
-
   async analytics(id: string, accessToken: string, date: number) {
     return instagramProvider.analytics(
       id,
       accessToken,
-      date,
-      'graph.instagram.com'
-    );
-  }
-
-  async postAnalytics(
-    integrationId: string,
-    accessToken: string,
-    postId: string,
-    date: number
-  ) {
-    return instagramProvider.postAnalytics(
-      integrationId,
-      accessToken,
-      postId,
       date,
       'graph.instagram.com'
     );

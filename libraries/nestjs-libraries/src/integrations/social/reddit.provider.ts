@@ -13,7 +13,6 @@ import { lookup } from 'mime-types';
 import axios from 'axios';
 import WebSocket from 'ws';
 import { Tool } from '@gitroom/nestjs-libraries/integrations/tool.decorator';
-import { Integration } from '@prisma/client';
 
 // @ts-ignore
 global.WebSocket = WebSocket;
@@ -32,7 +31,11 @@ export class RedditProvider extends SocialAbstract implements SocialProvider {
   }
 
   async refreshToken(refreshToken: string): Promise<AuthTokenDetails> {
-    const { access_token: accessToken, expires_in: expiresIn } = await (
+    const {
+      access_token: accessToken,
+      refresh_token: newRefreshToken,
+      expires_in: expiresIn,
+    } = await (
       await this.fetch('https://www.reddit.com/api/v1/access_token', {
         method: 'POST',
         headers: {
@@ -60,7 +63,7 @@ export class RedditProvider extends SocialAbstract implements SocialProvider {
       id,
       name,
       accessToken,
-      refreshToken: refreshToken,
+      refreshToken: newRefreshToken,
       expiresIn,
       picture: icon_img?.split?.('?')?.[0] || '',
       username: name,
@@ -180,7 +183,7 @@ export class RedditProvider extends SocialAbstract implements SocialProvider {
     accessToken: string,
     postDetails: PostDetails<RedditSettingsDto>[]
   ): Promise<PostResponse[]> {
-    const [post] = postDetails;
+    const [post, ...rest] = postDetails;
 
     const valueArray: PostResponse[] = [];
     for (const firstPostSettings of post.settings.subreddit) {
@@ -218,10 +221,7 @@ export class RedditProvider extends SocialAbstract implements SocialProvider {
             }
           : {}),
         text: post.message,
-        sr:
-          firstPostSettings.value.subreddit.indexOf('/r/') > -1
-            ? firstPostSettings.value.subreddit
-            : `/r/${firstPostSettings.value.subreddit}`,
+        sr: firstPostSettings.value.subreddit,
       };
 
       const all = await (
@@ -235,11 +235,7 @@ export class RedditProvider extends SocialAbstract implements SocialProvider {
         })
       ).json();
 
-      const {
-        id: redditId,
-        name,
-        url,
-      } = await new Promise<{
+      const { id, name, url } = await new Promise<{
         id: string;
         name: string;
         url: string;
@@ -272,11 +268,49 @@ export class RedditProvider extends SocialAbstract implements SocialProvider {
       });
 
       valueArray.push({
-        postId: redditId,
+        postId: id,
         releaseURL: url,
         id: post.id,
         status: 'published',
       });
+
+      for (const comment of rest) {
+        const {
+          json: {
+            data: {
+              things: [
+                {
+                  data: { id: commentId, permalink },
+                },
+              ],
+            },
+          },
+        } = await (
+          await this.fetch('https://oauth.reddit.com/api/comment', {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: new URLSearchParams({
+              text: comment.message,
+              thing_id: name,
+              api_type: 'json',
+            }),
+          })
+        ).json();
+
+        valueArray.push({
+          postId: commentId,
+          releaseURL: 'https://www.reddit.com' + permalink,
+          id: comment.id,
+          status: 'published',
+        });
+
+        if (rest.length > 1) {
+          await timer(5000);
+        }
+      }
 
       if (post.settings.subreddit.length > 1) {
         await timer(5000);
@@ -289,54 +323,6 @@ export class RedditProvider extends SocialAbstract implements SocialProvider {
       releaseURL: p.map((p) => p.releaseURL).join(','),
       status: 'published',
     }));
-  }
-
-  async comment(
-    id: string,
-    postId: string,
-    lastCommentId: string | undefined,
-    accessToken: string,
-    postDetails: PostDetails<RedditSettingsDto>[],
-    integration: Integration
-  ): Promise<PostResponse[]> {
-    const [commentPost] = postDetails;
-
-    // Reddit uses thing_id format like t3_xxx for posts
-    const thingId = postId.startsWith('t3_') ? postId : `t3_${postId}`;
-
-    const {
-      json: {
-        data: {
-          things: [
-            {
-              data: { id: commentId, permalink },
-            },
-          ],
-        },
-      },
-    } = await (
-      await this.fetch('https://oauth.reddit.com/api/comment', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: new URLSearchParams({
-          text: commentPost.message,
-          thing_id: thingId,
-          api_type: 'json',
-        }),
-      })
-    ).json();
-
-    return [
-      {
-        postId: commentId,
-        releaseURL: 'https://www.reddit.com' + permalink,
-        id: commentPost.id,
-        status: 'published',
-      },
-    ];
   }
 
   @Tool({
@@ -403,8 +389,7 @@ export class RedditProvider extends SocialAbstract implements SocialProvider {
       {
         key: 'subreddit',
         type: 'string',
-        description:
-          'Search flairs and restrictions by subreddit key should be "/r/[name]"',
+        description: 'Search flairs and restrictions by subreddit key should be "/r/[name]"',
       },
     ],
   })

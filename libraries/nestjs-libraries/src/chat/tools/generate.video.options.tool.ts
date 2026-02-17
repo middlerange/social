@@ -1,10 +1,7 @@
-import {
-  AgentToolInterface,
-  ToolReturn,
-} from '@gitroom/nestjs-libraries/chat/agent.tool.interface';
+import { AgentToolInterface, ToolReturn } from '@gitroom/nestjs-libraries/chat/agent.tool.interface';
 import { createTool } from '@mastra/core/tools';
 import { Injectable } from '@nestjs/common';
-import { getValidationSchemas } from '@gitroom/nestjs-libraries/chat/validation.schemas.helper';
+import { validationMetadatasToSchemas } from 'class-validator-jsonschema';
 import { VideoManager } from '@gitroom/nestjs-libraries/videos/video.manager';
 import z from 'zod';
 import { checkAuth } from '@gitroom/nestjs-libraries/chat/auth.context';
@@ -45,7 +42,7 @@ export class GenerateVideoOptionsTool implements AgentToolInterface {
                   type: p.identifier,
                   output: 'vertical|horizontal',
                   tools: p.tools,
-                  customParams: getValidationSchemas()[p.dto.name],
+                  customParams: validationMetadatasToSchemas()[p.dto.name],
                 };
               }),
             },
@@ -53,14 +50,13 @@ export class GenerateVideoOptionsTool implements AgentToolInterface {
             2
           )
         );
-
         return {
           video: videos.map((p) => {
             return {
               type: p.identifier,
               output: 'vertical|horizontal',
               tools: p.tools,
-              customParams: getValidationSchemas()[p.dto.name],
+              customParams: validationMetadatasToSchemas()[p.dto.name],
             };
           }),
         };

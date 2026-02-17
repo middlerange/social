@@ -24,7 +24,6 @@ type Inputs = {
 export function Login() {
   const t = useT();
   const [loading, setLoading] = useState(false);
-  const [notActivated, setNotActivated] = useState(false);
   const { isGeneral, neynarClientId, billingEnabled, genericOauth } =
     useVariables();
   const resolver = useMemo(() => {
@@ -40,7 +39,6 @@ export function Login() {
   const fetchData = useFetch();
   const onSubmit: SubmitHandler<Inputs> = async (data) => {
     setLoading(true);
-    setNotActivated(false);
     const login = await fetchData('/auth/login', {
       method: 'POST',
       body: JSON.stringify({
@@ -49,14 +47,9 @@ export function Login() {
       }),
     });
     if (login.status === 400) {
-      const errorMessage = await login.text();
-      if (errorMessage === 'User is not activated') {
-        setNotActivated(true);
-      } else {
-        form.setError('email', {
-          message: errorMessage,
-        });
-      }
+      form.setError('email', {
+        message: await login.text(),
+      });
       setLoading(false);
     }
   };
@@ -110,22 +103,6 @@ export function Login() {
                   placeholder={t('label_password', 'Password')}
                 />
               </div>
-              {notActivated && (
-                <div className="bg-amber-500/10 border border-amber-500/30 rounded-[10px] p-4 mb-4">
-                  <p className="text-amber-400 text-sm mb-2">
-                    {t(
-                      'account_not_activated',
-                      'Your account is not activated yet. Please check your email for the activation link.'
-                    )}
-                  </p>
-                  <Link
-                    href="/auth/activate"
-                    className="text-amber-400 underline hover:font-bold text-sm"
-                  >
-                    {t('resend_activation_email', 'Resend Activation Email')}
-                  </Link>
-                </div>
-              )}
               <div className="text-center mt-6">
                 <div className="w-full flex">
                   <Button

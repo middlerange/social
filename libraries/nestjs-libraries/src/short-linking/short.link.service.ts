@@ -6,7 +6,6 @@ import { ShortIo } from './providers/short.io';
 import { Kutt } from './providers/kutt';
 import { LinkDrip } from './providers/linkdrip';
 import { uniq } from 'lodash';
-import striptags from 'striptags';
 
 const getProvider = (): ShortLinking => {
   if (process.env.DUB_TOKEN) {
@@ -140,7 +139,7 @@ export class ShortLinkService {
       )}/[^\\s]*`,
       'g'
     );
-    const urls = striptags(mergeMessages).match(regex);
+    const urls = mergeMessages.match(regex);
     if (!urls) {
       // No URLs found, return the original text
       return [];
